@@ -5,7 +5,7 @@ import datetime
 import calendar
 from PyQt6.QtWidgets import (
     QMainWindow, QVBoxLayout, QWidget, QTableWidget, QTableWidgetItem,
-    QPushButton, QHBoxLayout, QLabel, QHeaderView, QMenuBar, QMessageBox
+    QPushButton, QHBoxLayout, QLabel, QHeaderView, QMenuBar, QMessageBox, QMenu
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -107,7 +107,7 @@ class MainWindow(QMainWindow):
         day = int(date_str)
         target_date = datetime.date(year, month, day)
 
-        menu = QMenuBar()
+        menu = QMenu(self.calendar_table)
         assign_early_action = menu.addAction("早番を割り当てる")
         assign_late_action = menu.addAction("遅番を割り当てる")
 
