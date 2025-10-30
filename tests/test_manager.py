@@ -5,6 +5,7 @@ import datetime
 import os
 import json
 import pytest
+import calendar
 from shift_management.manager import ShiftManager
 from shift_management.models import Employee, Shift
 
@@ -132,3 +133,59 @@ def test_get_shifts_for_month(temp_data_dir):
     # シフトがない月は空の辞書が返される
     shifts_may = manager.get_shifts_for_month(2025, 5)
     assert len(shifts_may) == 0
+
+def test_generate_shifts_for_month(temp_data_dir):
+    """
+    シフトの自動生成機能が正しく動作することをテストする。
+    """
+    manager = ShiftManager(data_dir=str(temp_data_dir))
+    emp1 = manager.add_employee("社員A")
+    emp2 = manager.add_employee("社員B")
+    emp3 = manager.add_employee("社員C")
+
+    year, month = 2025, 11
+    manager.generate_shifts_for_month(year, month)
+
+    # 1. すべての日にシフトが作成されたか確認
+    shifts = manager.get_shifts_for_month(year, month)
+    num_days = calendar.monthrange(year, month)[1]
+    assert len(shifts) == num_days
+
+    # 2. 社員が循環して割り当てられているか確認
+    date1 = datetime.date(year, month, 1).isoformat()
+    date2 = datetime.date(year, month, 2).isoformat()
+    date3 = datetime.date(year, month, 3).isoformat()
+    date4 = datetime.date(year, month, 4).isoformat()
+
+    assert shifts[date1].early_shift_employee_id == emp1.id
+    assert shifts[date1].late_shift_employee_id == emp2.id
+
+    assert shifts[date2].early_shift_employee_id == emp2.id
+    assert shifts[date2].late_shift_employee_id == emp3.id
+
+    assert shifts[date3].early_shift_employee_id == emp3.id
+    assert shifts[date3].late_shift_employee_id == emp1.id
+
+    assert shifts[date4].early_shift_employee_id == emp1.id
+    assert shifts[date4].late_shift_employee_id == emp2.id
+
+    # 3. 既存のシフトはクリアされることを確認
+    manager.set_shift(datetime.date(year, month, 1), "early", emp3.id)
+    manager.generate_shifts_for_month(year, month)
+    shifts_regenerated = manager.get_shifts_for_month(year, month)
+    assert shifts_regenerated[date1].early_shift_employee_id == emp1.id
+
+def test_generate_shifts_with_insufficient_employees(temp_data_dir):
+    """
+    社員が2人未満の場合にシフト自動生成がエラーを出すことをテストする。
+    """
+    manager = ShiftManager(data_dir=str(temp_data_dir))
+
+    # 社員が0人の場合
+    with pytest.raises(ValueError, match="少なくとも2人の社員が必要です"):
+        manager.generate_shifts_for_month(2025, 1)
+
+    # 社員が1人の場合
+    manager.add_employee("社員A")
+    with pytest.raises(ValueError, match="少なくとも2人の社員が必要です"):
+        manager.generate_shifts_for_month(2025, 1)

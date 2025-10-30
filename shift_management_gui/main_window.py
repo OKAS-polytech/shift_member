@@ -26,6 +26,9 @@ class MainWindow(QMainWindow):
     # シフトの割り当てが要求されたときに発行される (日付、シフトタイプ)
     assign_shift_requested = pyqtSignal(datetime.date, str)
 
+    # シフトの自動生成が要求されたときに発行される
+    auto_generate_shifts_requested = pyqtSignal()
+
     # アプリケーション終了が要求されたときに発行される
     exit_requested = pyqtSignal()
 
@@ -56,11 +59,14 @@ class MainWindow(QMainWindow):
         nav_layout = QHBoxLayout()
         self.prev_month_button = QPushButton("前月")
         self.next_month_button = QPushButton("次月")
+        self.auto_generate_button = QPushButton("シフトを自動作成")
         self.month_label = QLabel()
         self.month_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         nav_layout.addWidget(self.prev_month_button)
         nav_layout.addWidget(self.month_label)
         nav_layout.addWidget(self.next_month_button)
+        nav_layout.addStretch()
+        nav_layout.addWidget(self.auto_generate_button)
         main_layout.addLayout(nav_layout)
 
         # シフトカレンダーテーブル
@@ -74,6 +80,7 @@ class MainWindow(QMainWindow):
         # --- シグナルとスロットの接続 ---
         self.prev_month_button.clicked.connect(lambda: self.month_change_requested.emit(-1))
         self.next_month_button.clicked.connect(lambda: self.month_change_requested.emit(1))
+        self.auto_generate_button.clicked.connect(self.auto_generate_shifts_requested.emit)
         self.calendar_table.customContextMenuRequested.connect(self._show_calendar_context_menu)
 
     def _create_menu_bar(self):

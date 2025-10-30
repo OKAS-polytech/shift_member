@@ -4,6 +4,7 @@
 import datetime
 import json
 import os
+import calendar
 from typing import Dict, List, Optional
 
 from .models import Employee, Shift
@@ -146,3 +147,54 @@ class ShiftManager:
             date_str: shift for date_str, shift in self._shifts.items()
             if shift.date.year == year and shift.date.month == month
         }
+
+    def generate_shifts_for_month(self, year: int, month: int):
+        """
+        指定された月のシフトを自動的に生成する。
+
+        このメソッドは、登録されている全社員を使用して、毎日早番と遅番に
+        一人ずつ順番に割り当てます。
+        少なくとも2人の社員が登録されている必要があります。
+
+        Args:
+            year (int): 対象の年。
+            month (int): 対象の月。
+
+        Raises:
+            ValueError: 登録社員が2人未満の場合。
+        """
+        employees = self.get_all_employees()
+        if len(employees) < 2:
+            raise ValueError("シフトを自動生成するには、少なくとも2人の社員が必要です。")
+
+        # 既存の月のシフトをクリア
+        date_strs_to_delete = [
+            date_str for date_str, shift in self._shifts.items()
+            if shift.date.year == year and shift.date.month == month
+        ]
+        for date_str in date_strs_to_delete:
+            del self._shifts[date_str]
+
+        num_days = calendar.monthrange(year, month)[1]
+        employee_ids = [emp.id for emp in employees]
+        num_employees = len(employee_ids)
+
+        # ラウンドロビン用のインデックス
+        early_idx = 0
+        late_idx = 1  # 早番と遅番が同じ人にならないようにオフセット
+
+        for day in range(1, num_days + 1):
+            date = datetime.date(year, month, day)
+            date_str = date.isoformat()
+
+            shift = Shift(date=date)
+            shift.early_shift_employee_id = employee_ids[early_idx % num_employees]
+            shift.late_shift_employee_id = employee_ids[late_idx % num_employees]
+
+            self._shifts[date_str] = shift
+
+            # インデックスを更新
+            early_idx += 1
+            late_idx += 1
+
+        self.save_data()

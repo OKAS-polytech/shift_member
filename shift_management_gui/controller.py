@@ -2,6 +2,7 @@
 GUIアプリケーションのコントローラを定義するモジュール。
 """
 import datetime
+from PyQt6.QtWidgets import QMessageBox
 from shift_management.manager import ShiftManager
 from .main_window import MainWindow
 from .dialogs import EmployeeManagementDialog, SelectEmployeeDialog
@@ -35,6 +36,7 @@ class ShiftController:
         self._view.month_change_requested.connect(self._handle_month_change)
         self._view.manage_employees_requested.connect(self._handle_manage_employees)
         self._view.assign_shift_requested.connect(self._handle_assign_shift)
+        self._view.auto_generate_shifts_requested.connect(self._handle_auto_generate_shifts)
         self._view.exit_requested.connect(self._view.close)
 
     def update_calendar_view(self):
@@ -117,3 +119,26 @@ class ShiftController:
                     self.update_calendar_view()
                 except ValueError as e:
                     self._view.show_error_message("エラー", str(e))
+
+    def _handle_auto_generate_shifts(self):
+        """
+        シフト自動生成のリクエストを処理する。
+        """
+        reply = QMessageBox.question(
+            self._view,
+            "確認",
+            f"{self._current_date.year}年{self._current_date.month}月のシフトを自動生成しますか？\n"
+            "既存のシフトはすべて上書きされます。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                year = self._current_date.year
+                month = self._current_date.month
+                self._manager.generate_shifts_for_month(year, month)
+                self.update_calendar_view()
+                QMessageBox.information(self._view, "成功", "シフトが自動生成されました。")
+            except ValueError as e:
+                self._view.show_error_message("生成エラー", str(e))
