@@ -13,9 +13,11 @@ class Employee:
     Attributes:
         id (int): 一意の識別子。
         name (str): 社員の氏名。
+        desired_holidays (int): 1ヶ月あたりの希望休日数。
     """
     id: int
     name: str
+    desired_holidays: int = 8
 
 @dataclass
 class Shift:

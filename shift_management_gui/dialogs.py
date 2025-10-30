@@ -15,8 +15,8 @@ class EmployeeManagementDialog(QDialog):
     社員の管理（一覧表示、追加）を行うためのダイアログ。
     """
     # --- Signals ---
-    # 新しい社員の追加が要求されたときに発行される (社員名)
-    add_employee_requested = pyqtSignal(str)
+    # 新しい社員の追加が要求されたときに発行される (社員名, 希望休日数)
+    add_employee_requested = pyqtSignal(str, int)
 
     def __init__(self, employees: List[Employee], parent=None):
         """
@@ -62,17 +62,25 @@ class EmployeeManagementDialog(QDialog):
             self.employee_list_widget.addItem("登録されている社員はいません。")
         else:
             for emp in self._employees:
-                self.employee_list_widget.addItem(f"ID: {emp.id}, 氏名: {emp.name}")
+                self.employee_list_widget.addItem(f"ID: {emp.id}, 氏名: {emp.name} (希望休日: {emp.desired_holidays}日)")
 
     def _request_add_employee(self):
         """
         新しい社員を追加するための入力ダイアログを表示し、結果をシグナルで発行する。
         """
-        name, ok = QInputDialog.getText(self, "社員の追加", "新しい社員の氏名を入力してください:")
-        if ok and name:
-            self.add_employee_requested.emit(name)
-        elif ok and not name:
+        name, ok_name = QInputDialog.getText(self, "社員の追加", "新しい社員の氏名を入力してください:")
+        if not ok_name:
+            return
+
+        if not name:
             QMessageBox.warning(self, "入力エラー", "氏名が入力されていません。")
+            return
+
+        holidays, ok_holidays = QInputDialog.getInt(self, "希望休日数の設定", "月の希望休日数を入力してください:", 8, 0, 31, 1)
+        if not ok_holidays:
+            return
+
+        self.add_employee_requested.emit(name, holidays)
 
     def update_employee_list(self, employees: List[Employee]):
         """

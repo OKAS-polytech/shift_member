@@ -5,6 +5,8 @@ import datetime
 import json
 import os
 import calendar
+import random
+from itertools import cycle
 from typing import Dict, List, Optional
 
 from .models import Employee, Shift
@@ -40,6 +42,9 @@ class ShiftManager:
             with open(self.employees_file, 'r', encoding='utf-8') as f:
                 employees_data = json.load(f)
                 for emp in employees_data:
+                    # 古いデータ形式との互換性のための処理
+                    if 'desired_holidays' not in emp:
+                        emp['desired_holidays'] = 8  # デフォルト値
                     self._employees[emp['id']] = Employee(**emp)
 
         if os.path.exists(self.shifts_file):
@@ -65,18 +70,19 @@ class ShiftManager:
                 shifts_data_to_save[date_str] = shift_dict
             json.dump(shifts_data_to_save, f, indent=4, ensure_ascii=False)
 
-    def add_employee(self, name: str) -> Employee:
+    def add_employee(self, name: str, desired_holidays: int = 8) -> Employee:
         """
         新しい社員を登録する。
 
         Args:
             name (str): 社員の氏名。
+            desired_holidays (int): 希望休日数。
 
         Returns:
             Employee: 登録された社員オブジェクト。
         """
         new_id = max(self._employees.keys()) + 1 if self._employees else 1
-        new_employee = Employee(id=new_id, name=name)
+        new_employee = Employee(id=new_id, name=name, desired_holidays=desired_holidays)
         self._employees[new_id] = new_employee
         self.save_data()
         return new_employee
@@ -129,6 +135,83 @@ class ShiftManager:
             shift.late_shift_employee_id = employee_id
         else:
             raise ValueError("シフトタイプは 'early' または 'late' を指定してください。")
+
+        self.save_data()
+
+    def generate_shifts_with_constraints(self, year: int, month: int, max_consecutive_work: int):
+        """
+        制約（希望休日数、最大連勤日数）に基づいてシフトを生成する。
+        """
+        employees = self.get_all_employees()
+        num_days = calendar.monthrange(year, month)[1]
+
+        # --- 事前チェック ---
+        total_shifts_needed = num_days * 2  # 早番 + 遅番
+        total_work_days_available = sum(num_days - emp.desired_holidays for emp in employees)
+        if total_shifts_needed > total_work_days_available:
+            raise ValueError("全社員の合計勤務可能日数では、全てのシフトを埋めることができません。")
+
+        # --- 内部状態の初期化 ---
+        work_counts = {emp.id: 0 for emp in employees}
+        holiday_counts = {emp.id: 0 for emp in employees}
+        consecutive_work_counts = {emp.id: 0 for emp in employees}
+
+        # 既存シフトのクリア
+        date_strs_to_delete = [
+            d_str for d_str, s in self._shifts.items() if s.date.year == year and s.date.month == month
+        ]
+        for d_str in date_strs_to_delete:
+            del self._shifts[d_str]
+
+        # --- シフト割り当て ---
+        for day in range(1, num_days + 1):
+            date = datetime.date(year, month, day)
+            shift = Shift(date=date)
+
+            # --- ヘルパー: 割り当て候補者を決定 ---
+            def find_candidate(assigned_in_shift: List[int]) -> int:
+                candidates = []
+                for emp in employees:
+                    emp_id = emp.id
+                    # 既に同じ日に割り当てられていない
+                    if emp_id in assigned_in_shift: continue
+                    # 連勤上限に達していない
+                    if consecutive_work_counts[emp_id] >= max_consecutive_work: continue
+                    # 勤務日数が上限（月の日数 - 希望休）に達していない
+                    if work_counts[emp_id] >= num_days - emp.desired_holidays: continue
+                    candidates.append(emp)
+
+                if not candidates:
+                    raise ValueError(f"{date}のシフト割り当てに失敗しました。条件を満たす社員がいません。")
+
+                # 優先度: (勤務日数が少ない > ランダム) - 昇順ソート
+                candidates.sort(key=lambda e: (
+                    work_counts[e.id],
+                    random.random()
+                ))
+                return candidates[0].id
+
+            # --- 早番・遅番の割り当て ---
+            assigned_today = []
+
+            early_emp_id = find_candidate(assigned_today)
+            shift.early_shift_employee_id = early_emp_id
+            work_counts[early_emp_id] += 1
+            consecutive_work_counts[early_emp_id] += 1
+            assigned_today.append(early_emp_id)
+
+            late_emp_id = find_candidate(assigned_today)
+            shift.late_shift_employee_id = late_emp_id
+            work_counts[late_emp_id] += 1
+            consecutive_work_counts[late_emp_id] += 1
+
+            self._shifts[date.isoformat()] = shift
+
+            # --- 休日と連勤カウントの更新 ---
+            for emp in employees:
+                if emp.id not in [early_emp_id, late_emp_id]:
+                    holiday_counts[emp.id] += 1
+                    consecutive_work_counts[emp.id] = 0 # 休みでリセット
 
         self.save_data()
 

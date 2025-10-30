@@ -189,3 +189,46 @@ def test_generate_shifts_with_insufficient_employees(temp_data_dir):
     manager.add_employee("社員A")
     with pytest.raises(ValueError, match="少なくとも2人の社員が必要です"):
         manager.generate_shifts_for_month(2025, 1)
+
+def test_generate_shifts_with_constraints(temp_data_dir):
+    """
+    制約付きシフト生成が正しく動作することをテストする。
+    """
+    manager = ShiftManager(data_dir=str(temp_data_dir))
+    emp1 = manager.add_employee("社員A", desired_holidays=10)
+    emp2 = manager.add_employee("社員B", desired_holidays=10)
+    emp3 = manager.add_employee("社員C", desired_holidays=10)
+
+    year, month = 2025, 4  # 30日の月
+    max_consecutive = 5
+    manager.generate_shifts_with_constraints(year, month, max_consecutive)
+
+    shifts = manager.get_shifts_for_month(year, month)
+
+    # 1. 全ての日にシフトが割り当てられているか
+    assert len(shifts) == 30
+
+    # 2. 各社員の休日数が希望通りか
+    holidays = {emp.id: 0 for emp in manager.get_all_employees()}
+    for day in range(1, 31):
+        date_str = datetime.date(year, month, day).isoformat()
+        shift = shifts[date_str]
+        worked_today = [shift.early_shift_employee_id, shift.late_shift_employee_id]
+        for emp_id in holidays.keys():
+            if emp_id not in worked_today:
+                holidays[emp_id] += 1
+    assert holidays[emp1.id] == 10
+    assert holidays[emp2.id] == 10
+    assert holidays[emp3.id] == 10
+
+def test_generate_shifts_impossible_constraints(temp_data_dir):
+    """
+    不可能な制約下でエラーがスローされることをテストする。
+    """
+    manager = ShiftManager(data_dir=str(temp_data_dir))
+    # 休日が多すぎてシフトが埋まらないケース
+    manager.add_employee("社員A", desired_holidays=25)
+    manager.add_employee("社員B", desired_holidays=25)
+
+    with pytest.raises(ValueError, match="全てのシフトを埋めることができません"):
+        manager.generate_shifts_with_constraints(2025, 4, 5)

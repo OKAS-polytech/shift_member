@@ -2,7 +2,7 @@
 GUIアプリケーションのコントローラを定義するモジュール。
 """
 import datetime
-from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtWidgets import QMessageBox, QInputDialog
 from shift_management.manager import ShiftManager
 from .main_window import MainWindow
 from .dialogs import EmployeeManagementDialog, SelectEmployeeDialog
@@ -82,16 +82,16 @@ class ShiftController:
 
         # ダイアログからのシグナルを接続
         dialog.add_employee_requested.connect(
-            lambda name: self._handle_add_employee(name, dialog)
+            lambda name, holidays: self._handle_add_employee(name, holidays, dialog)
         )
 
         dialog.exec()
 
-    def _handle_add_employee(self, name: str, dialog: EmployeeManagementDialog):
+    def _handle_add_employee(self, name: str, holidays: int, dialog: EmployeeManagementDialog):
         """
         社員追加のリクエストを処理する。
         """
-        self._manager.add_employee(name)
+        self._manager.add_employee(name, desired_holidays=holidays)
 
         # モデルが変更されたので、ダイアログのリストを更新
         updated_employees = self._manager.get_all_employees()
@@ -122,12 +122,19 @@ class ShiftController:
 
     def _handle_auto_generate_shifts(self):
         """
-        シフト自動生成のリクエストを処理する。
+        シフト自動生成のリクエストを処理する（制約付き）。
         """
+        max_consecutive, ok1 = QInputDialog.getInt(
+            self._view, "制約の設定", "最大連勤日数を入力してください:", 5, 1, 10
+        )
+        if not ok1:
+            return
+
         reply = QMessageBox.question(
             self._view,
             "確認",
             f"{self._current_date.year}年{self._current_date.month}月のシフトを自動生成しますか？\n"
+            f"制約: 最大{max_consecutive}連勤\n"
             "既存のシフトはすべて上書きされます。",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
@@ -137,8 +144,9 @@ class ShiftController:
             try:
                 year = self._current_date.year
                 month = self._current_date.month
-                self._manager.generate_shifts_for_month(year, month)
+                # 古いメソッドの代わりに新しいメソッドを呼び出す
+                self._manager.generate_shifts_with_constraints(year, month, max_consecutive)
                 self.update_calendar_view()
                 QMessageBox.information(self._view, "成功", "シフトが自動生成されました。")
             except ValueError as e:
-                self._view.show_error_message("生成エラー", str(e))
+                self._view.show_error_message("生成エラー", f"シフトの生成に失敗しました。\n理由: {e}")
